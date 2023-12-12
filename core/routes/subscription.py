@@ -3,14 +3,18 @@ from typing import List
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
-from core.lib.exchange import decrypt_message
-from core.models import Subscription, Event
+from core.lib.exchange import decrypt_message, renew_subscription, create_subscription
+from core.models import Subscription, Event, RoomResource
 
 router = Router()
 
 class SubSchema(Schema):
     value: List[dict]
     validationTokens: List[str]
+
+class SubscriptionOut(Schema):
+    subscription_id: str
+    expiration_time: datetime
 
 @router.post('/')
 def create_validate_subscription(request, body: SubSchema, validationToken: str = None):
@@ -47,3 +51,22 @@ def create_validate_subscription(request, body: SubSchema, validationToken: str 
             Event.objects.filter(event_id=event_obj['event_id']).update(**event_obj)
 
     return None
+
+@router.post('/verify/{resource_email}', response=SubscriptionOut)
+def verify_subscription(request, resource_email: str):
+    room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
+
+    subscription = Subscription.objects.filter(room_resource=room_resource, expiration_time__gt=datetime.now()).first()
+    if subscription:
+        # refresh subscription
+        expiration_time = renew_subscription(subscription.subscription_id)
+        if expiration_time:
+            subscription.expiration_time = expiration_time
+            subscription.save()
+    else:
+        # create subscription
+        subscription_details = create_subscription(room_resource.email)
+        subscription = Subscription(room_resource=room_resource, **subscription_details)
+        subscription.save()
+
+    return subscription
