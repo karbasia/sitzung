@@ -3,8 +3,8 @@ from typing import List
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
-from core.lib.exchange import decrypt_message
-from core.models import Subscription, Event
+from core.lib.exchange import decrypt_message, renew_subscription, create_subscription
+from core.models import Subscription, Event, RoomResource
 
 router = Router()
 
@@ -12,15 +12,18 @@ class SubSchema(Schema):
     value: List[dict]
     validationTokens: List[str]
 
-@router.post('/')
-def create_validate_subscription(request, body: SubSchema, validationToken: str = None):
+class SubscriptionOut(Schema):
+    subscription_id: str
+    expiration_time: datetime
 
+@router.post('/')
+def execute_webhook(request, payload: SubSchema, validation_token: str = None):
     # Respond to validation queries on subscription creation
-    if validationToken:
-        return HttpResponse(validationToken, content_type='text/plain')
+    if validation_token:
+        return HttpResponse(validation_token, content_type='text/plain')
     
     # Handle the event
-    event_dict = body.value[0]
+    event_dict = payload.value[0]
 
     queryset = Subscription.objects.select_related('room_resource').filter(expiration_time__gt=datetime.now())
     subscription = get_object_or_404(queryset, subscription_id=event_dict['subscriptionId'])
@@ -28,8 +31,10 @@ def create_validate_subscription(request, body: SubSchema, validationToken: str 
     encrypted_content = event_dict['encryptedContent']
     data_obj = decrypt_message(encrypted_content['dataKey'], encrypted_content['dataSignature'], encrypted_content['data'])
 
+    event = Event.objects.filter(event_id=event_dict['resourceData']['id'], deleted_at__isnull=True)
+
     if event_dict['changeType'] == 'deleted':
-        Event.objects.filter(event_id=event_dict['resourceData']['id']).update(deleted_at=datetime.now())
+        event.update(deleted_at=datetime.now())
     elif 'subject' in data_obj:
         # After a meeting is cancelled, update events with blank payloads are sent to the endpoint
         event_obj = {
@@ -41,9 +46,29 @@ def create_validate_subscription(request, body: SubSchema, validationToken: str 
             'end_time': data_obj['end']['dateTime'],
         }
         
-        if event_dict['changeType'] == 'created':
+        # If we create an event from our app, then we shouldn't create it again from the subscription
+        if event_dict['changeType'] == 'created' and event.count == 0:
             Event.objects.create(room_resource=subscription.room_resource, **event_obj)
         else:
-            Event.objects.filter(event_id=event_obj['event_id']).update(**event_obj)
+            event.update(**event_obj)
 
     return None
+
+@router.post('/verify/{resource_email}', response=SubscriptionOut)
+def verify_subscription(request, resource_email: str):
+    room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
+
+    subscription = Subscription.objects.filter(room_resource=room_resource, expiration_time__gt=datetime.now()).first()
+    if subscription:
+        # refresh subscription
+        expiration_time = renew_subscription(subscription.subscription_id)
+        if expiration_time:
+            subscription.expiration_time = expiration_time
+            subscription.save()
+    else:
+        # create subscription
+        subscription_details = create_subscription(room_resource.email)
+        subscription = Subscription(room_resource=room_resource, **subscription_details)
+        subscription.save()
+
+    return subscription

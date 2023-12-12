@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import requests
+from django.conf import settings
 from base64 import b64decode, b64encode
 from pathlib import Path
 from O365 import Account
@@ -16,7 +17,7 @@ from .token import DjangoCacheTokenBackend
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-GRAPH_URL = 'https://graph.microsoft.com/v1.0/subscriptions'
+GRAPH_URL = 'https://graph.microsoft.com/v1.0'
 EXPIRATION_DURATION = datetime.timedelta(minutes=4230)
 PEM_DATA = open(os.path.join(BASE_DIR, 'cert.pem'), 'rb').read()
 PRIVATE_KEY = RSA.import_key(open(os.path.join(BASE_DIR, 'key.pem'), 'rb').read())
@@ -64,7 +65,7 @@ def create_subscription(mailbox):
         'Prefer': 'IdType="ImmutableId"',
     }
 
-    response = requests.post(GRAPH_URL, json=req_data, headers=headers)
+    response = requests.post(f'{GRAPH_URL}/subscriptions', json=req_data, headers=headers)
     response = response.json()
 
     if 'error' in response:
@@ -80,7 +81,7 @@ def create_subscription(mailbox):
 def renew_subscription(subscription_id):
     token = get_access_token()
     expiration_time = datetime.datetime.now(tz=datetime.timezone.utc) + EXPIRATION_DURATION
-    url = f'{GRAPH_URL}/{subscription_id}'
+    url = f'{GRAPH_URL}/subscriptions/{subscription_id}'
     req_data = {
         'expirationDateTime': f'{expiration_time.isoformat()}'
     }
@@ -118,3 +119,35 @@ def decrypt_message(data_key, signature, data):
         return data_obj
     else:
         raise ValueError('Could not decrypt the payload. Please verify the data')
+
+def create_exchange_event(event_details, room_resource):
+    token = get_access_token()
+    url = f'{GRAPH_URL}/users/{room_resource.email}/calendar/events'
+    
+    headers = {
+        'Authorization': f'Bearer {token}'
+    }
+    payload = {
+        'subject': event_details['subject'],
+        'start': {
+            'dateTime': event_details['start_time'].isoformat(),
+            'timeZone': settings.TIME_ZONE
+        },
+        'end': {
+            'dateTime': event_details['end_time'].isoformat(),
+            'timeZone': settings.TIME_ZONE
+        },
+        'location': {
+            'locationType': 'default',
+            'locationEmailAddress': room_resource.email,
+            'displayName': room_resource.name
+        }
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    response = response.json()
+
+    if 'error' in response:
+        raise RuntimeError(f'Event creation failed with code: {response["error"]["code"]} '
+                            f'and message: {response["error"]["message"]}')
+    return response

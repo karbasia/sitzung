@@ -1,6 +1,5 @@
 from datetime import datetime
 from django.db import models
-from core.lib.exchange import create_subscription, renew_subscription
 
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, blank=True)
@@ -15,19 +14,6 @@ class RoomResource(BaseModel):
     description = models.TextField(null=True, blank=True)
     email = models.CharField(max_length=500, null=False)
     
-    def verify_subscription(self):
-        subscription = Subscription.objects.filter(room_resource=self, expiration_time__gt=datetime.now()).first()
-        if subscription:
-            # refresh subscription
-            expiration_time = renew_subscription(subscription.subscription_id)
-            if expiration_time:
-                subscription.expiration_time = expiration_time
-                subscription.save()
-        else:
-            # create subscription
-            subscription_details = create_subscription(self.email)
-            subscription = Subscription(room_resource=self, **subscription_details)
-            subscription.save()
 
 class Subscription(BaseModel):
     subscription_id = models.CharField(max_length=512)
