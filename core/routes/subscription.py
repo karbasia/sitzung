@@ -17,10 +17,10 @@ class SubscriptionOut(Schema):
     expiration_time: datetime
 
 @router.post('/')
-def execute_webhook(request, payload: SubSchema, validation_token: str = None):
+def execute_webhook(request, payload: SubSchema = None, validationToken: str = None):
     # Respond to validation queries on subscription creation
-    if validation_token:
-        return HttpResponse(validation_token, content_type='text/plain')
+    if validationToken:
+        return HttpResponse(validationToken, content_type='text/plain')
     
     # Handle the event
     event_dict = payload.value[0]
@@ -47,7 +47,7 @@ def execute_webhook(request, payload: SubSchema, validation_token: str = None):
         }
         
         # If we create an event from our app, then we shouldn't create it again from the subscription
-        if event_dict['changeType'] == 'created' and event.count == 0:
+        if event_dict['changeType'] == 'created' and event.count() == 0:
             Event.objects.create(room_resource=subscription.room_resource, **event_obj)
         else:
             event.update(**event_obj)
@@ -58,7 +58,7 @@ def execute_webhook(request, payload: SubSchema, validation_token: str = None):
 def verify_subscription(request, resource_email: str):
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
 
-    subscription = Subscription.objects.filter(room_resource=room_resource, expiration_time__gt=datetime.now()).first()
+    subscription = Subscription.objects.filter(room_resource=room_resource, expiration_time__gt=datetime.now(), deleted_at__isnull=True).first()
     if subscription:
         # refresh subscription
         expiration_time = renew_subscription(subscription.subscription_id)

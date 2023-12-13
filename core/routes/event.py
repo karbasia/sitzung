@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
 from core.models import RoomResource, Event
 from core.lib.exchange import create_exchange_event
+from ninja.errors import HttpError
 
 router = Router()
 
@@ -26,34 +27,29 @@ class EventIn(Schema):
 @router.get('/{resource_email}', response=List[EventOut])
 def get_events(request, resource_email: str):
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
-    events = Event.objects.filter(room_resource=room_resource, deleted_at__isnull=True).order_by('start_time')
+    events = Event.objects.filter(room_resource=room_resource, start_time__date=datetime.today(), deleted_at__isnull=True).order_by('start_time')
     return events
 
 @router.post('/{resource_email}', response=EventOut)
 def create_event(request, payload: EventIn, resource_email: str):
-    payload_dict = payload.dict()
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
 
-    if payload_dict['start_time'] > payload_dict['end_time']:
-        return 400, {"message": "Invalid parameters"}
+    if payload.start_time > payload.end_time:
+        raise HttpError(400, 'Invalid parameters')
 
     # Verify that there isn't any overlap with existing events
     event_conflicts = Event.objects.filter(
-                                    Q(start_time__lt=payload_dict['start_time'])
-                                    & Q(end_time__gt=payload_dict['end_time']),
-                                    Q(start_time__gt=payload_dict['start_time'])
-                                    & Q(end_time__lt=payload_dict['end_time']),
-                                    Q(start_time__gte=payload_dict['start_time'])
-                                    & Q(end_time__gte=payload_dict['end_time']),
-                                    Q(start_time__lte=payload_dict['start_time'])
-                                    & Q(end_time__lte=payload_dict['end_time']),
+                                    Q(start_time__range=[payload.start_time, payload.end_time])
+                                    | Q(end_time__range=[payload.start_time, payload.end_time])
+                                    | (Q(start_time__lte=payload.start_time) & Q(end_time__gte=payload.end_time)),
                                     room_resource=room_resource, deleted_at__isnull=True,
                                 )
     
     if event_conflicts.count() > 0:
-        return 400, {"message": "Could not book meeting for the selected time"}
+        raise HttpError(400, 'Could not book meeting for the selected time')
     
     # Create the event in Exchange
+    payload_dict = payload.dict()
     response = create_exchange_event(payload_dict, room_resource)
 
     event = Event.objects.create(event_id=response['id'], 

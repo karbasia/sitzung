@@ -62,7 +62,6 @@ def create_subscription(mailbox):
     }
     headers = {
         'Authorization': f'Bearer {token}',
-        'Prefer': 'IdType="ImmutableId"',
     }
 
     response = requests.post(f'{GRAPH_URL}/subscriptions', json=req_data, headers=headers)
