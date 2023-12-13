@@ -17,10 +17,10 @@ class SubscriptionOut(Schema):
     expiration_time: datetime
 
 @router.post('/')
-def execute_webhook(request, payload: SubSchema, validation_token: str = None):
+def execute_webhook(request, payload: SubSchema = None, validationToken: str = None):
     # Respond to validation queries on subscription creation
-    if validation_token:
-        return HttpResponse(validation_token, content_type='text/plain')
+    if validationToken:
+        return HttpResponse(validationToken, content_type='text/plain')
     
     # Handle the event
     event_dict = payload.value[0]
