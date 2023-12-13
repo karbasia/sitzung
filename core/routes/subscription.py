@@ -58,7 +58,7 @@ def execute_webhook(request, payload: SubSchema = None, validationToken: str = N
 def verify_subscription(request, resource_email: str):
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
 
-    subscription = Subscription.objects.filter(room_resource=room_resource, expiration_time__gt=datetime.now()).first()
+    subscription = Subscription.objects.filter(room_resource=room_resource, expiration_time__gt=datetime.now(), deleted_at__isnull=True).first()
     if subscription:
         # refresh subscription
         expiration_time = renew_subscription(subscription.subscription_id)
