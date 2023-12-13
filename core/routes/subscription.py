@@ -47,7 +47,7 @@ def execute_webhook(request, payload: SubSchema = None, validationToken: str = N
         }
         
         # If we create an event from our app, then we shouldn't create it again from the subscription
-        if event_dict['changeType'] == 'created' and event.count == 0:
+        if event_dict['changeType'] == 'created' and event.count() == 0:
             Event.objects.create(room_resource=subscription.room_resource, **event_obj)
         else:
             event.update(**event_obj)
