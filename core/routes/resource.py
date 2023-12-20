@@ -4,7 +4,7 @@ from django.db.models import Prefetch
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from core.models import RoomResource, Event
-from .event import EventOut
+from .event import EventSchema
 
 router = Router()
 
@@ -13,7 +13,7 @@ class ResourceSchema(Schema):
     name: str
     description: str
     email: str
-    event_set: List[EventOut] = None
+    event_set: List[EventSchema] = None
 
 
 @router.get('/{resource_email}', response=ResourceSchema)
