@@ -8,16 +8,16 @@ from core.models import Subscription, Event, RoomResource
 
 router = Router()
 
-class SubSchema(Schema):
+class SubscriptionInSchema(Schema):
     value: List[dict]
     validationTokens: List[str]
 
-class SubscriptionOut(Schema):
+class SubscriptionSchema(Schema):
     subscription_id: str
     expiration_time: datetime
 
 @router.post('/')
-def execute_webhook(request, payload: SubSchema = None, validationToken: str = None):
+def execute_webhook(request, payload: SubscriptionInSchema = None, validationToken: str = None):
     # Respond to validation queries on subscription creation
     if validationToken:
         return HttpResponse(validationToken, content_type='text/plain')
@@ -54,7 +54,7 @@ def execute_webhook(request, payload: SubSchema = None, validationToken: str = N
 
     return None
 
-@router.post('/verify/{resource_email}', response=SubscriptionOut)
+@router.post('/verify/{resource_email}', response=SubscriptionSchema)
 def verify_subscription(request, resource_email: str):
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
 

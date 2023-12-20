@@ -9,7 +9,7 @@ from ninja.errors import HttpError
 
 router = Router()
 
-class EventOut(Schema):
+class EventSchema(Schema):
     id: int
     event_id: str
     organizer_name: str
@@ -18,20 +18,20 @@ class EventOut(Schema):
     start_time: datetime
     end_time: datetime
 
-class EventIn(Schema):
+class EventInSchema(Schema):
     subject: str
     start_time: datetime
     end_time: datetime
 
 
-@router.get('/{resource_email}', response=List[EventOut])
+@router.get('/{resource_email}', response=List[EventSchema])
 def get_events(request, resource_email: str):
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
     events = Event.objects.filter(room_resource=room_resource, start_time__date=datetime.today(), deleted_at__isnull=True).order_by('start_time')
     return events
 
-@router.post('/{resource_email}', response=EventOut)
-def create_event(request, payload: EventIn, resource_email: str):
+@router.post('/{resource_email}', response=EventSchema)
+def create_event(request, payload: EventInSchema, resource_email: str):
     room_resource = get_object_or_404(RoomResource, deleted_at__isnull=True, email=resource_email)
 
     if payload.start_time > payload.end_time:
